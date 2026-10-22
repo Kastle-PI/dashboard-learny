@@ -8,7 +8,7 @@ import { useCustomAlert } from "@/contexts/AlertContext";
 import { useApi } from "@/hooks/useApi";
 import { useUser } from "@/contexts/UserContext";
 import { Child } from "@/types/child";
-import Loading from "./Loading";
+import Loading from "./LoadingComponent";
 import { useGetData } from "@/hooks/useGetData";
 
 type Props = {
@@ -35,7 +35,7 @@ export default function ContainerChildren({
 
   const handleSelect = async (child: Child) => {
     const result = await request({
-      endpoint: "/api/parents",
+      endpoint: "/api/parents/child/selected",
       method: "PUT",
       body: {
         selectedChild: child._id,
@@ -107,7 +107,15 @@ export default function ContainerChildren({
       className="flex flex-col items-center justify-center absolute left-56 w-80 top-24 min-h-28 rounded-2xl p-0.5 bg-white shadow-[0_0_12px_rgba(150,150,150,0.7)] z-50"
     >
       {loading || loadingChildren ? (
-        <Loading />
+        <div className="flex items-center justify-center h-full">
+          <Image
+            src="/gifs/loading.webp"
+            alt="Loading"
+            width={150}
+            height={150}
+            unoptimized
+          />
+        </div>
       ) : (
         <div className="bg-white/10 rounded-2xl p-3 w-80">
           <div className="bg-white/10 rounded-2xl p-3">
@@ -121,6 +129,7 @@ export default function ContainerChildren({
                     onClick={() => {
                       router.push("/crianca/cadastro");
                       router.refresh();
+                      onClose();
                     }}
                     className="flex items-center justify-center"
                   >
@@ -130,38 +139,37 @@ export default function ContainerChildren({
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                <div className="w-full bg-[#EF5B6A] flex items-center justify-between px-4 py-3 rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div
-                      className="w-14 h-14 rounded-full bg-cover bg-center bg-no-repeat"
-                      style={{
-                        backgroundImage: `url(${
-                          child?.profilePicture
-                            ? child?.profilePicture
-                            : "/images/avatar.png"
-                        })`,
-                      }}
-                    />
-                    <div>
-                      <p className="text-lg font-bold text-white">
-                        {child?.name || "Joana"}
-                      </p>
+                {child && (
+                  <div className="w-full bg-[#EF5B6A] flex items-center justify-between px-4 py-3 rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="w-14 h-14 rounded-full bg-cover bg-center bg-no-repeat"
+                        style={{
+                          backgroundImage: `url(${child.profilePicture || "images/avatar.png"})`,
+                        }}
+                      />
+                      <div>
+                        <p className="text-lg font-bold text-white">
+                          {child.name}
+                        </p>
+                      </div>
                     </div>
+                    <button
+                      className="hover:cursor-pointer bg-white rounded-full p-2"
+                      onClick={() => {
+                        router.push(`/crianca/${child?._id}`)
+                        onClose();
+                      }}
+                    >
+                      <Image
+                        src="/icons/config.png"
+                        alt="Editar"
+                        width={20}
+                        height={20}
+                      />
+                    </button>
                   </div>
-                  <button
-                    className="hover:cursor-pointer bg-white rounded-full p-2"
-                    onClick={() =>
-                      router.push(`/crianca/perfil?id=${child?._id}`)
-                    }
-                  >
-                    <Image
-                      src="/icons/config.png"
-                      alt="Editar"
-                      width={20}
-                      height={20}
-                    />
-                  </button>
-                </div>
+                )}
 
                 <div className="w-full">
                   {children
@@ -191,6 +199,7 @@ export default function ContainerChildren({
                     onClick={() => {
                       router.push("/crianca/cadastro");
                       router.refresh();
+                      onClose();
                     }}
                   >
                     <div className="flex items-center justify-center">

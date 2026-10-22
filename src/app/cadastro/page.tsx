@@ -10,9 +10,9 @@ import { useRouter } from "next/navigation";
 import { JSX, useState } from "react";
 import ProgressLine from "@/components/ProgressLine";
 import BtnPaginate from "@/components/BtnPaginate";
-import Loading from "../loading";
 import BtnSelectPicture from "@/components/BtnSelectPicture";
 import { User } from "@/types/user";
+import LoadingComponent from "@/components/LoadingComponent";
 
 export default function Cadastro() {
   const router = useRouter();
@@ -28,39 +28,86 @@ export default function Cadastro() {
     email: "",
     birthDate: null,
   });
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [step, setStep] = useState(1);
 
-  const handleRegister = async () => {
-    if (!data.username || !data.password || !data.name || !data.birthDate) {
+  const handleRegister = async (): Promise<boolean> => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!data.username || !data.password || !data.email || !data.name || !data.birthDate) {
       showAlert({
         icon: "/icons/error.png",
         title: "Erro ao fazer cadastro!",
         message: "Por favor, preencha todos os campos obrigatórios.",
       });
-      return;
+
+      return false;
+    }
+
+    if (!emailRegex.test(data.email)) {
+      showAlert({
+        icon: "/icons/error.png",
+        title: "Email inválido!",
+        message: "Digite um email válido no formato exemplo@email.com.",
+      });
+
+      return false;
+    }
+
+    let profilePicture = data.profilePicture || "";
+
+    if (selectedImageFile) {
+      const formData = new FormData();
+      formData.append("file", selectedImageFile);
+
+      const uploadResult = await request({
+        endpoint: "/api/upload",
+        method: "POST",
+        body: formData,
+        hasHeaders: true,
+      });
+
+      if (!uploadResult || uploadResult.error) {
+        showAlert({
+          icon: "/icons/error.png",
+          title: "Erro ao enviar imagem!",
+          message:
+            uploadResult?.message ||
+            "Ocorreu um erro ao enviar a imagem para o servidor",
+        });
+
+        return false;
+      }
+
+      profilePicture = uploadResult.url;
     }
 
     const result = await request({
       endpoint: "/api/parents",
       method: "POST",
-      body: data,
+      body: { ...data, profilePicture },
     });
 
     if (result && !result.error) {
       showAlert({
-        icon: "/icons/successpng",
+        icon: "/icons/success.png",
         title: "Usuário cadastrado com sucesso!",
         message:
           "Cadastro realizado com sucesso. Faça o login usufrua do aplicativo!",
       });
-    } else {
-      showAlert({
-        icon: "/icons/error.png",
-        title: "Erro ao cadastrar usuário!",
-        message: result.message || "Ocorreu um erro ao cadastrar o usuário",
-      });
+
+      return true;
     }
+
+    showAlert({
+      icon: "/icons/error.png",
+      title: "Erro ao cadastrar usuário!",
+      message: result.message || "Ocorreu um erro ao cadastrar o usuário",
+    });
+
+    return false;
   };
 
   const stepsComponents: Record<number, JSX.Element> = {
@@ -76,12 +123,7 @@ export default function Cadastro() {
           <span className="text-2xl">Bem vindo (a) ao</span>
           <span className="text-3xl font-bold">LEARNY</span>
         </div>
-        <Image
-          src="/images/logo-big.png"
-          alt="Logo"
-          width={150}
-          height={150}
-        />
+        <Image src="/images/logo-big.png" alt="Logo" width={150} height={150} />
       </div>
     ),
     2: (
@@ -95,10 +137,11 @@ export default function Cadastro() {
         <div className="flex flex-col items-center w-full h-full">
           <BtnSelectPicture
             type="add"
-            image={data.profilePicture || ""}
-            onChange={(novaImagem: string | null) =>
-              setData({ ...data, profilePicture: novaImagem })
-            }
+            image={imagePreview || data.profilePicture || ""}
+            onChange={(file, preview) => {
+              setSelectedImageFile(file);
+              setImagePreview(preview || null);
+            }}
           />
           <div className="flex flex-col w-4/5 gap-3">
             <CustomInput
@@ -111,13 +154,14 @@ export default function Cadastro() {
               label="Senha"
               value={data.password}
               onChange={(e) => setData({ ...data, password: e.target.value })}
-              isPassword
+              type="password"
               transparent
             />
             <CustomInput
               label="Email"
               value={data.email || ""}
               onChange={(e) => setData({ ...data, email: e.target.value })}
+              type="email"
               transparent
             />
             <CustomInput
@@ -159,7 +203,7 @@ export default function Cadastro() {
             Cadastro de responsável realizado com sucesso
           </span>
         </div>
-        <div className="w-70 h-70 bg-[url('/images/elephant.png')] bg-cover bg-no-repeat" />
+        <div className="w-70 h-70 bg-[url('/images/elephant.webp')] bg-cover bg-no-repeat" />
       </div>
     ),
   };
@@ -174,7 +218,7 @@ export default function Cadastro() {
           <ProgressLine step={step} />
 
           {/* Cadastro */}
-          <div className="flex-1 flex bg-[url('/images/bg-gradient.png')] justify-between items-center p-8 gap-2 rounded-md text-white overflow-hidden">
+          <div className="flex-1 flex bg-[url('/images/bg-gradient.webp')] justify-between items-center p-8 gap-2 rounded-md text-white overflow-hidden">
             <div className="flex flex-col items-center justify-center px-30 pt-18 gap-2 w-[25%] h-full rounded-md p-8">
               {step > 1 && (
                 <BtnPaginate
@@ -184,17 +228,32 @@ export default function Cadastro() {
               )}
             </div>
 
-            {loading ? <Loading /> : stepsComponents[step]}
+            {loading ? <LoadingComponent /> : stepsComponents[step]}
 
             <div className="flex flex-col items-center justify-center px-30 pt-18 gap-2 w-[25%] h-full rounded-md p-8">
               <BtnPaginate
                 text={`${
                   step == 3 ? "Login" : step == 2 ? "Confirmar" : "Avançar"
                 }`}
-                onClick={() => {
-                  if (step < 3) setStep(step + 1);
-                  if (step == 2) handleRegister();
-                  if (step == 3) router.push("/");
+                onClick={async () => {
+                  if (step === 1) {
+                    setStep(2);
+                    return;
+                  }
+
+                  if (step === 2) {
+                    const success = await handleRegister();
+
+                    if (success) {
+                      setStep(3);
+                    }
+
+                    return;
+                  }
+
+                  if (step === 3) {
+                    router.push("/");
+                  }
                 }}
               />
             </div>

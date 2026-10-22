@@ -12,7 +12,6 @@ import { useEffect, useState } from "react";
 import { BsThreeDots } from "react-icons/bs";
 import { IoMdClose } from "react-icons/io";
 import { User } from "@/types/user";
-import Container from "@/components/Container";
 
 export default function Perfil() {
   const router = useRouter();
@@ -30,6 +29,8 @@ export default function Perfil() {
     name: user?.name || "",
     email: user?.email || "",
   });
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [newPassword, setNewPassword] = useState("");
   const [selectedInput, setSelectedInput] = useState<string | null>(null);
@@ -37,6 +38,8 @@ export default function Perfil() {
   const [editing, setEditing] = useState(false);
 
   const handleEdit = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     if (!data.username || !data.name || !data.email) {
       showAlert({
         icon: "/icons/error.png",
@@ -46,19 +49,65 @@ export default function Perfil() {
       return;
     }
 
+    if (!emailRegex.test(data.email)) {
+      showAlert({
+        icon: "/icons/error.png",
+        title: "Email inválido!",
+        message: "Digite um email válido no formato exemplo@email.com.",
+      });
+
+      return;
+    }
+
+    let profilePicture = data.profilePicture || "";
+
+    if (selectedImageFile) {
+      const formData = new FormData();
+      formData.append("file", selectedImageFile);
+
+      const uploadResult = await request({
+        endpoint: "/api/upload",
+        method: "POST",
+        body: formData,
+        hasHeaders: true,
+      });
+
+      if (!uploadResult || uploadResult.error) {
+        showAlert({
+          icon: "/icons/error.png",
+          title: "Erro ao enviar imagem!",
+          message:
+            uploadResult?.message ||
+            "Ocorreu um erro ao enviar a imagem para o servidor",
+        });
+        return;
+      }
+
+      profilePicture = uploadResult.url;
+      setData({ ...data, profilePicture });
+      setSelectedImageFile(null);
+      setImagePreview(null);
+    }
+
+    const body = {
+      ...data,
+      profilePicture,
+      ...(newPassword !== "" && { password: newPassword }),
+    };
+
     const result = await request({
       endpoint: `/api/parents/`,
       method: "PUT",
-      body: { ...data, password: newPassword },
+      body: body,
     });
 
     if (result && !result.error) {
       showAlert({
-        icon: "/icons/successpng",
+        icon: "/icons/success.png",
         title: "Usuário editado com sucesso!",
         message:
-          "Edição realizado com sucesso. Aguarde a atualização dos dados na tela.",
-        onClose: () => router.refresh(),
+          "Edição realizada com sucesso. Redirecionando para login.",
+        onClose: () => logout({silent: true}),
       });
     } else {
       showAlert({
@@ -78,7 +127,7 @@ export default function Perfil() {
     });
     if (result && !result.error) {
       showAlert({
-        icon: "/icons/successpng",
+        icon: "/icons/success.png",
         title: "Conta excluída com sucesso.",
         message:
           "Conta excluída com sucesso. Redirecionando para a página de login.",
@@ -108,20 +157,20 @@ export default function Perfil() {
   }, [user]);
 
   return (
-    <Container>
       <div className="flex w-full h-screen items-center justify-center px-14 gap-3 overflow-hidden">
         <div className="flex flex-col w-1/3 gap-4">
           <div className={`flex relative items-center gap-4`}>
             <BtnSelecionaFoto
               type="edit"
-              image={data.profilePicture || ""}
-              onChange={(novaImagem: string | null) =>
-                setData({ ...data, profilePicture: novaImagem })
-              }
+              image={imagePreview || user?.profilePicture || ""}
+              onChange={(file, preview) => {
+                setSelectedImageFile(file);
+                setImagePreview(preview || null);
+              }}
             />
             <div className="flex flex-col gap-1">
               <span className="font-bold text-2xl bg-linear-to-r from-[#d47489] to-[#7dc3ec] bg-clip-text text-transparent">
-                {data.name}
+                {user?.name}
               </span>
               <span className="text-[#4c4c4c]">{"You're a"}</span>
               <span className="font-bold text-lg bg-linear-to-r from-[#d47489] to-[#7dc3ec] bg-clip-text text-transparent">
@@ -157,7 +206,7 @@ export default function Perfil() {
             )}
           </div>
 
-          <XPBar />
+          <XPBar progress={50} xp={50} toNext={100} />
 
           <div className="flex flex-col gap-3">
             <CustomInput
@@ -180,6 +229,7 @@ export default function Perfil() {
 
             <CustomInput
               label="Email"
+              type="email"
               value={data.email || ""}
               onChange={(e) => setData({ ...data, email: e.target.value })}
               disabled={!editing}
@@ -228,8 +278,7 @@ export default function Perfil() {
           </div>
         </div>
 
-        <div className="ml-32 w-96 h-96 flex bg-[url('/images/super-parent.png')] bg-contain bg-no-repeat" />
+        <div className="ml-32 w-96 h-96 flex bg-[url('/images/super-parent.webp')] bg-contain bg-no-repeat" />
       </div>
-    </Container>
   );
 }

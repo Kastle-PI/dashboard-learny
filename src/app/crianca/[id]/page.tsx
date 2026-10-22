@@ -6,13 +6,11 @@ import CustomInput from "@/components/CustomInput";
 import GradientSwitch from "@/components/GradientSwitch";
 import { useCustomAlert } from "@/contexts/AlertContext";
 import { useApi } from "@/hooks/useApi";
-import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BsThreeDots } from "react-icons/bs";
 import { IoMdClose } from "react-icons/io";
 import { ChildWithProgress } from "@/types/child";
-import Container from "@/components/Container";
 import { useUser } from "@/contexts/UserContext";
 import { useGetData } from "@/hooks/useGetData";
 import BtnSelectPicture from "@/components/BtnSelectPicture";
@@ -34,14 +32,45 @@ export default function Perfil() {
     audioActive: child?.audioActive || null,
     rankingActive: child?.rankingActive || null,
   });
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [newPassword, setNewPassword] = useState("");
   const [selectedInput, setSelectedInput] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editando, setEditando] = useState(false);
 
-  const handleEdit = async () => {
-    if (!childData.username || !childData.name) {
+  const levelData = child && getLevelFromXp(child.points);
+  const progressPercentage = levelData
+    ? (levelData.currentLevelXp / levelData.xpToNextLevel) * 100
+    : 0;
+
+  function getLevelFromXp(totalXp: number) {
+    let level = 1;
+
+    let accumulatedXp = 0;
+
+    while (true) {
+      const xpToNext = Math.floor(80 + 35 * Math.pow(level, 1.28));
+
+      if (accumulatedXp + xpToNext > totalXp) {
+        break;
+      }
+
+      accumulatedXp += xpToNext;
+
+      level++;
+    }
+
+    return {
+      level,
+      currentLevelXp: totalXp - accumulatedXp,
+      xpToNextLevel: Math.floor(80 + 35 * Math.pow(level, 1.28)),
+    };
+  }
+
+  const handleEdit = async (data = childData) => {
+    if (!data.username || !data.name) {
       showAlert({
         icon: "/icons/error.png",
         title: "Erro ao editar usuário!",
@@ -50,16 +79,52 @@ export default function Perfil() {
       return;
     }
 
+    let profilePicture = data.profilePicture || "";
+
+    if (selectedImageFile) {
+      const formData = new FormData();
+      formData.append("file", selectedImageFile);
+
+      const uploadResult = await request({
+        endpoint: "/api/upload",
+        method: "POST",
+        body: formData,
+        hasHeaders: true,
+      });
+
+      if (!uploadResult || uploadResult.error) {
+        showAlert({
+          icon: "/icons/error.png",
+          title: "Erro ao enviar imagem!",
+          message:
+            uploadResult?.message ||
+            "Ocorreu um erro ao enviar a imagem para o servidor",
+        });
+        return;
+      }
+
+      profilePicture = uploadResult.url;
+      setChildData({ ...data, profilePicture });
+      setSelectedImageFile(null);
+      setImagePreview(null);
+    }
+
+    const body = {
+      ...data,
+      profilePicture,
+      ...(newPassword !== "" && { password: newPassword }),
+    };
+
     const result = await request({
       endpoint: `/api/parents/child/${id}`,
       method: "PUT",
-      body: { ...childData, password: newPassword },
+      body,
     });
 
     if (result && !result.error) {
       getChildData();
       showAlert({
-        icon: "/icons/successpng",
+        icon: "/icons/success.png",
         title: "Usuário editado com sucesso!",
         message:
           "Edição realizado com sucesso. Aguarde a atualização dos dados na tela.",
@@ -77,17 +142,18 @@ export default function Perfil() {
   };
 
   const handleDelete = async () => {
+    console.log("entrou aqui")
     const result = await request({
       endpoint: `/api/parents/child/${id}`,
       method: "DELETE",
     });
-    if (result && !result.error) {
+    if (result.status == 204 && !result.error) {
       getChildData();
       showAlert({
-        icon: "/icons/successpng",
+        icon: "/icons/success.png",
         title: "Conta excluída com sucesso.",
         message:
-          "Conta excluída com sucesso. Redirecionando para a página de login.",
+          "Conta excluída com sucesso. Redirecionando para a página inicial.",
         onClose: () => router.push("/"),
       });
       return;
@@ -123,11 +189,17 @@ export default function Perfil() {
               : "bg-white"
           } items-center w-full h-12 rounded-full gap-4 transition-all duration-300 ease-in-out pr-1 hover:cursor-pointer`}
           onClick={async () => {
+            const newRankingActive = !childData.rankingActive;
+
             setChildData({
               ...childData,
-              rankingActive: !childData.rankingActive,
+              rankingActive: newRankingActive,
             });
-            handleEdit();
+
+            handleEdit({
+              ...childData,
+              rankingActive: newRankingActive,
+            });
           }}
         >
           <div
@@ -162,27 +234,16 @@ export default function Perfil() {
   };
 
   return (
-    <Container>
-      {loading ? (
-        <div className="flex items-center justify-center h-full">
-          <Image
-            src="/gifs/loading.gif"
-            alt="Loading"
-            width={200}
-            height={200}
-            unoptimized
-          />
-        </div>
-      ) : (
         <div className="flex w-full h-screen items-center justify-center px-14 gap-20 overflow-hidden">
           <div className="flex flex-col w-1/3 gap-4">
             <div className={`flex relative items-center gap-4`}>
               <BtnSelectPicture
                 type="edit"
-                image={childData?.profilePicture || ""}
-                onChange={(novaImagem: string | null) =>
-                  setChildData({ ...childData, profilePicture: novaImagem })
-                }
+                image={imagePreview || childData?.profilePicture || ""}
+                onChange={(file, preview) => {
+                  setSelectedImageFile(file);
+                  setImagePreview(preview || null);
+                }}
               />
               <div className="flex flex-col gap-1">
                 <span className="font-bold text-2xl bg-linear-to-r from-[#d47489] to-[#7dc3ec] bg-clip-text text-transparent">
@@ -190,9 +251,7 @@ export default function Perfil() {
                 </span>
                 <span className="text-[#4c4c4c]">
                   Lv.{" "}
-                  <span className="font-bold text-lg">
-                    {childData.points && Math.floor(childData.points / 100)}
-                  </span>
+                  <span className="font-bold text-lg">{levelData?.level}</span>
                 </span>
               </div>
               {modalOpen ? (
@@ -224,7 +283,11 @@ export default function Perfil() {
               )}
             </div>
 
-            <XPBar points={childData.points} />
+            <XPBar
+              progress={progressPercentage}
+              xp={levelData?.currentLevelXp}
+              toNext={levelData?.xpToNextLevel}
+            />
 
             <div className="flex flex-col gap-3">
               <CustomInput
@@ -242,6 +305,7 @@ export default function Perfil() {
                 label="Senha"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
+                type="password"
                 disabled={!editando}
                 selected={selectedInput === "senha"}
                 onClick={() => setSelectedInput("senha")}
@@ -309,11 +373,17 @@ export default function Perfil() {
                   <GradientSwitch
                     enabled={childData.audioActive}
                     onClick={async () => {
+                      const newAudioActive = !childData.audioActive;
+
                       setChildData({
                         ...childData,
-                        audioActive: !childData.audioActive,
+                        audioActive: newAudioActive,
                       });
-                      handleEdit();
+
+                      handleEdit({
+                        ...childData,
+                        audioActive: newAudioActive,
+                      });
                     }}
                   />
                 </div>
@@ -333,7 +403,5 @@ export default function Perfil() {
             </div>
           </div>
         </div>
-      )}
-    </Container>
-  );
+      );
 }

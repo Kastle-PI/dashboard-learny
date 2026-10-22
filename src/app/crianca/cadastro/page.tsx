@@ -6,7 +6,6 @@ import { useApi } from "@/hooks/useApi";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChildWithProgress } from "@/types/child";
-import Container from "@/components/Container";
 import { useGetData } from "@/hooks/useGetData";
 import Image from "next/image";
 import DatePickerBR from "@/components/DatePickerBR";
@@ -26,6 +25,8 @@ export default function CadastroCrianca() {
     name: "",
     birthDate: null,
   });
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const optionImages = [
     "aliens",
@@ -48,16 +49,44 @@ export default function CadastroCrianca() {
       return;
     }
 
+    let profilePicture = childData.profilePicture || "";
+
+    if (selectedImageFile) {
+      const formData = new FormData();
+      formData.append("file", selectedImageFile);
+
+      const uploadResult = await request({
+        endpoint: "/api/upload",
+        method: "POST",
+        body: formData,
+        hasHeaders: true,
+      });
+
+      if (!uploadResult || uploadResult.error) {
+        showAlert({
+          icon: "/icons/error.png",
+          title: "Erro ao enviar imagem!",
+          message:
+            uploadResult?.message ||
+            "Ocorreu um erro ao enviar a imagem para o servidor",
+        });
+        return;
+      }
+
+      profilePicture = uploadResult.url;
+      setChildData({ ...childData, profilePicture });
+    }
+
     const result = await request({
       endpoint: `/api/parents/children`,
       method: "POST",
-      body: { ...childData },
+      body: { ...childData, profilePicture },
     });
 
     if (result && !result.error) {
       getChildData();
       showAlert({
-        icon: "/icons/successpng",
+        icon: "/icons/success.png",
         title: "Dependente cadastrado com sucesso!",
         message: "Cadastro realizado com sucesso!",
         onClose: () => router.refresh(),
@@ -74,7 +103,6 @@ export default function CadastroCrianca() {
   };
 
   return (
-    <Container>
       <div className="flex flex-col px-20 py-12 gap-16">
         <div>
           <h1 className="font-bold text-xl bg-linear-to-b from-[#519ebf] to-[#9c5869] bg-clip-text text-transparent">
@@ -87,10 +115,11 @@ export default function CadastroCrianca() {
             <BtnSelectPicture
               type="add"
               variant="dark"
-              image={childData?.profilePicture || ""}
-              onChange={(novaImagem: string | null) =>
-                setChildData({ ...childData, profilePicture: novaImagem })
-              }
+              image={imagePreview || childData?.profilePicture || ""}
+              onChange={(file, preview) => {
+                setSelectedImageFile(file);
+                setImagePreview(preview || null);
+              }}
             />
 
             <div className="flex flex-col gap-3">
@@ -110,6 +139,7 @@ export default function CadastroCrianca() {
                 onChange={(e) =>
                   setChildData({ ...childData, password: e.target.value })
                 }
+                type="password"
                 selected={selectedInput === "senha"}
                 onClick={() => setSelectedInput("senha")}
               />
@@ -126,7 +156,7 @@ export default function CadastroCrianca() {
               <div className="flex items-center justify-between px-2 pr-8 py-2 w-full h-16 border border-zinc-200 rounded-md shadow-[0_0_4px_rgba(150,150,150,0.3)]">
                 <DatePickerBR
                   variant="dark"
-                  value={null}
+                  value={childData.birthDate || null}
                   onChange={(novaData) =>
                     setChildData({ ...childData, birthDate: novaData })
                   }
@@ -178,6 +208,5 @@ export default function CadastroCrianca() {
           </div>
         </div>
       </div>
-    </Container>
   );
 }

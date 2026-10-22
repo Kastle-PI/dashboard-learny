@@ -4,8 +4,10 @@ import { useApi } from "@/hooks/useApi";
 import BtnAction from "./BtnAction";
 import ScoreCard from "./ScoreCard";
 import { useUser } from "@/contexts/UserContext";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCustomAlert } from "@/contexts/AlertContext";
+import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import { createPortal } from "react-dom";
 
 type Props = {
   phaseNumber: number;
@@ -17,7 +19,6 @@ type Props = {
 
 type NotificationModalProps = {
   open: boolean;
-  type: string;
   description: string;
   onChangeDescription: (value: string) => void;
   onClose: () => void;
@@ -26,7 +27,6 @@ type NotificationModalProps = {
 
 const NotificationModal = ({
   open,
-  type,
   description,
   onChangeDescription,
   onClose,
@@ -42,7 +42,7 @@ const NotificationModal = ({
         </h2>
 
         <span className="mb-4 block text-sm text-zinc-500">
-          Tipo: {type}
+          Tipo: Comentário
         </span>
 
         <textarea
@@ -74,6 +74,7 @@ const NotificationModal = ({
               text-zinc-700
               transition
               hover:bg-zinc-100
+              hover:cursor-pointer
             "
           >
             Cancelar
@@ -83,12 +84,13 @@ const NotificationModal = ({
             onClick={onConfirm}
             className="
               rounded-lg
-              bg-[#6CD2FF]
+              bg-[#80D25B]
               px-4
               py-2
               text-white
               transition
               hover:opacity-90
+              hover:cursor-pointer
             "
           >
             Enviar
@@ -115,7 +117,57 @@ export default function FeedbackContainer({
   const [type, setType] = useState("");
   const [description, setDescription] = useState("");
 
-  const openNotificationModal = (notificationType: string) => {
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  const [selectedEmojis, setSelectedEmojis] = useState<string[]>([]);
+
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  const handleEmojiClick = (emojiData: EmojiClickData) => {
+    setSelectedEmojis((prev) => [...prev, emojiData.emoji]);
+    setShowEmojiPicker(false);
+  };
+
+  const openNotificationModal = async (notificationType: string) => {
+    if (notificationType === "positive") {
+      return;
+    }
+
+    if (notificationType !== "comment") {
+      let autoDescription = "";
+
+      if (notificationType === "love") {
+        autoDescription = "Parabéns filho, continue assim. Amo você";
+      }
+
+      const result = await request({
+        endpoint: `/api/parents/child/${child?._id}/notifications`,
+        method: "POST",
+        body: {
+          type: notificationType,
+          description: autoDescription,
+          phaseCode,
+        },
+      });
+
+      if (result && !result.error) {
+        showAlert({
+          icon: "/icons/success.png",
+          title: "Notificação enviada com sucesso!",
+          message:
+            result.message || "Sua notificação foi registrada com sucesso",
+        });
+      } else {
+        showAlert({
+          icon: "/icons/error.png",
+          title: "Erro ao enviar notificação!",
+          message: result?.message || "Ocorreu um erro ao enviar a notificação",
+        });
+      }
+
+      return;
+    }
+
     setType(notificationType);
     setDescription("");
     setShowModal(true);
@@ -140,9 +192,7 @@ export default function FeedbackContainer({
       showAlert({
         icon: "/icons/success.png",
         title: "Notificação enviada com sucesso!",
-        message:
-          result.message ||
-          "Sua notificação foi registrada com sucesso",
+        message: result.message || "Sua notificação foi registrada com sucesso",
       });
 
       closeNotificationModal();
@@ -150,18 +200,34 @@ export default function FeedbackContainer({
       showAlert({
         icon: "/icons/error.png",
         title: "Erro ao enviar notificação!",
-        message:
-          result?.message ||
-          "Ocorreu um erro ao enviar a notificação",
+        message: result?.message || "Ocorreu um erro ao enviar a notificação",
       });
     }
   };
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        pickerRef.current &&
+        !pickerRef.current.contains(event.target as Node)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    }
+
+    if (showEmojiPicker) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showEmojiPicker]);
 
   return (
     <>
       <NotificationModal
         open={showModal}
-        type={type}
         description={description}
         onChangeDescription={setDescription}
         onClose={closeNotificationModal}
@@ -173,62 +239,97 @@ export default function FeedbackContainer({
           shrink-0
           flex
           flex-col
-          gap-3
-          rounded-2xl
+          rounded-xl
           bg-white
-          p-4
           shadow-[0_0_6px_rgba(150,150,150,0.6)]
         "
       >
         {/* HEADER */}
-        <div className="mb-2 flex h-14 items-center rounded-xl bg-[url('/images/bg-dino.png')] bg-cover bg-no-repeat px-4">
+        <div className="flex h-12 items-center justify-between rounded-t-xl bg-[url('/images/bg-dino.webp')] bg-cover bg-no-repeat px-6">
           <span className="text-xl font-bold text-white">
             {`Fase ${phaseNumber}`}
           </span>
+          <div className="flex gap-1 flex-wrap mt-8">
+            {selectedEmojis.map((emoji, index) => (
+              <div
+                key={index}
+                className="
+                  flex items-center justify-center
+                  rounded-full bg-white
+                  w-9 h-9
+                  shadow-[0_0_3px_rgba(0,0,0,0.8)]
+                "
+              >
+                <span className="text-lg">{emoji}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* SCORES */}
-        <div className="flex items-start justify-center gap-4">
-          <ScoreCard
-            color="#FFB300"
-            label="Tempo"
-            value={time}
-            icon="clock.png"
-          />
+        <div className="flex flex-col px-6 py-8 gap-3">
+          {/* SCORES */}
+          <div className="flex items-start justify-center gap-4">
+            <ScoreCard
+              color="#FFB300"
+              label="Tempo"
+              value={time}
+              icon="clock.png"
+            />
 
-          <ScoreCard
-            color="#80D25B"
-            label="Pontos"
-            value={points.toString()}
-            icon="search.png"
-          />
+            <ScoreCard
+              color="#80D25B"
+              label="Pontos"
+              value={points.toString()}
+              icon="search.png"
+            />
 
-          <ScoreCard
-            color="#6CD2FF"
-            label="Acertos"
-            value={`${percentage}%`}
-            icon="percentage.png"
-          />
-        </div>
+            <ScoreCard
+              color="#6CD2FF"
+              label="Acertos"
+              value={`${percentage}%`}
+              icon="percentage.png"
+            />
+          </div>
 
-        <hr className="my-1 border-zinc-200" />
+          <hr className="mt-4 mb-2 border-zinc-300" />
 
-        {/* ACTIONS */}
-        <div className="flex items-center justify-center gap-6">
-          <BtnAction
-            icon="happy-emoji.png"
-            onPress={() => openNotificationModal("positive")}
-          />
+          {/* ACTIONS */}
+          <div className="flex items-center justify-center gap-6">
+            <div className="relative">
+              <BtnAction
+                icon="happy-emoji.png"
+                onPress={() => setShowEmojiPicker((prev) => !prev)}
+              />
 
-          <BtnAction
-            icon="comment.png"
-            onPress={() => openNotificationModal("comment")}
-          />
+              {showEmojiPicker &&
+                createPortal(
+                  <div
+                    ref={pickerRef}
+                    className="
+                      fixed
+                      z-999999
+                      left-1/2
+                      top-1/2
+                      -translate-x-1/2
+                      -translate-y-1/2
+                    "
+                  >
+                    <EmojiPicker onEmojiClick={handleEmojiClick} />
+                  </div>,
+                  document.body,
+                )}
+            </div>
 
-          <BtnAction
-            icon="heart.png"
-            onPress={() => openNotificationModal("love")}
-          />
+            <BtnAction
+              icon="comment.png"
+              onPress={() => openNotificationModal("comment")}
+            />
+
+            <BtnAction
+              icon="heart.png"
+              onPress={() => openNotificationModal("love")}
+            />
+          </div>
         </div>
       </div>
     </>
