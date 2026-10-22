@@ -14,7 +14,7 @@ Dashboard web do projeto **Learny** destinado aos pais e responsáveis. Permite 
 
 ## Pré-requisitos
 
-- Node.js 20 ou superior
+- Node.js 22 ou superior (necessário para publicar com Wrangler)
 - npm (vem com o Node)
 - Acesso à API `learny-mobile-api` em execução (local ou produção)
 - Bucket S3 configurado com credenciais IAM
