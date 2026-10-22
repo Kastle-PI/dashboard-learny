@@ -10,7 +10,7 @@ Dashboard web do projeto **Learny** destinado aos pais e responsáveis. Permite 
 - **jsonwebtoken** para validação do token nas API routes
 - **Recharts** para gráficos de atividade
 - **Vitest** para testes
-- Deploy automático via **Vercel**
+- Deploy de produção no **Cloudflare Workers**, usando o adaptador **OpenNext**
 
 ## Pré-requisitos
 
@@ -69,6 +69,9 @@ AWS_S3_BASE_URL=https://pi-learny.s3.us-east-1.amazonaws.com
 npm run dev              # Servidor de desenvolvimento (porta 3000)
 npm run build            # Build de produção
 npm start                # Roda a build de produção
+npm run preview          # Pré-visualiza no runtime local do Cloudflare Workers
+npm run deploy           # Gera a build OpenNext e publica no Cloudflare Workers
+npm run upload           # Gera e envia uma nova versão sem ativá-la
 npm run lint             # ESLint
 npm test                 # Vitest (one-shot)
 npm run test:watch       # Vitest em watch mode
@@ -100,7 +103,10 @@ dashboard-learny/
 │   ├── types/                # Tipagens compartilhadas
 │   └── utils/                # activityCharts (transforma dados para gráficos)
 ├── public/                   # Assets estáticos
-├── .github/workflows/ci.yml  # Pipeline CI/CD
+├── .github/workflows/ci.yml  # Pipeline de CI
+├── .github/workflows/deploy-production.yml # Deploy de produção
+├── open-next.config.ts       # Configuração do adaptador OpenNext
+├── wrangler.jsonc            # Configuração do Cloudflare Worker
 ├── vitest.config.ts          # Configuração do Vitest
 ├── eslint.config.mjs         # ESLint flat config
 ├── next.config.ts            # Configuração do Next.js
@@ -162,27 +168,39 @@ Os testes ficam colocalizados ao código (`src/**/*.test.ts`). Cobertura atual: 
 
 ## CI/CD
 
-O pipeline (`.github/workflows/ci.yml`) executa em todo push e pull request para `main` e `develop`:
+O pipeline de CI (`.github/workflows/ci.yml`) executa em todo push e pull request para `main` e `develop`:
 
 1. **Lint**: `npm run lint` (ESLint flat config)
 2. **Type check**: `npx tsc --noEmit` (TypeScript strict)
 3. **Testes**: `npm test` (Vitest)
 4. **Build**: `npm run build` (Next.js de produção)
 
-O CI atua apenas como **gate de qualidade**. O deploy é feito automaticamente pela **Vercel** via integração nativa com o GitHub:
+O workflow de produção (`.github/workflows/deploy-production.yml`) repete lint, type check e testes e, se todos passarem, publica a aplicação no Cloudflare Workers:
 
-- **Previews**: cada PR ganha uma URL de preview única
-- **Produção**: cada merge em `main` dispara um deploy de produção
+- **Produção**: push ou merge em `main` dispara o deploy; também pode ser iniciado manualmente em GitHub → Actions → Deploy production.
+- O deploy não é executado em pull requests e não cria previews.
 
-### Variáveis de ambiente em produção
+### Configuração do Cloudflare e do GitHub
 
-As mesmas variáveis listadas acima devem ser configuradas em:
-- **Vercel**: Project Settings → Environment Variables
-- Recomenda-se separar entre os escopos `Production`, `Preview` e `Development`.
+1. Crie um API Token no Cloudflare com permissão para publicar Workers (Workers Scripts: Edit) e obtenha o Account ID.
+2. Cadastre no repositório, em Settings → Secrets and variables → Actions, os secrets `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID`.
+3. Após criar/publicar o Worker `dashboard-learny`, configure em Workers & Pages → `dashboard-learny` → Settings → Variables and Secrets as variáveis de runtime:
+
+| Nome | Tipo recomendado |
+|------|------------------|
+| `API_URL` | Variable |
+| `JWT_SECRET` | Secret |
+| `AWS_S3_REGION` | Variable |
+| `AWS_S3_ACCESS_KEY_ID` | Secret |
+| `AWS_S3_SECRET_ACCESS_KEY` | Secret |
+| `AWS_S3_BUCKET` | Variable |
+| `AWS_S3_BASE_URL` | Variable |
+
+Os valores de runtime do Worker são separados dos secrets usados pelo GitHub Actions para autenticar o deploy. Nunca inclua credenciais AWS ou `JWT_SECRET` no repositório. O Worker precisa de uma API token do AWS IAM com permissão de escrita no bucket configurado.
 
 ## Convenções
 
 - **Commits**: [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `ci:`, `test:`, `refactor:`, ...).
 - **Branches**: `main` (produção), `develop` (integração), feature branches a partir de `develop`.
-- **Tipagem**: TypeScript strict habilitado; o build da Vercel falha em qualquer erro de tipo desde que `typescript.ignoreBuildErrors` foi removido do `next.config.ts`.
+- **Tipagem**: TypeScript strict habilitado; CI e deploy falham em qualquer erro de tipo.
 - **Estilo**: ESLint (`next/core-web-vitals` + `next/typescript`); rodar `npm run lint` antes de abrir PR.
